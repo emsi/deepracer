@@ -44,7 +44,7 @@ s3_prefix_robomaker = job_name_prefix + "-robomaker"#-" + strftime("%y%m%d-%H%M%
 
 
 # Duration of job in seconds (5 hours)
-job_duration_in_seconds = 24 * 60 * 60
+job_duration_in_seconds = 5 * 60 * 60
 
 aws_region = sage_session.boto_region_name
 
@@ -88,9 +88,11 @@ metric_definitions = [
 
 RLCOACH_PRESET = "deepracer"
 
+gpu_available = False  # os.environ.get("GPU_AVAILABLE", False)
 # 'local' for cpu, 'local_gpu' for nvidia gpu (and then you don't have to set default runtime to nvidia)
-instance_type = "local-gpu"
-
+instance_type = "local_gpu" if gpu_available else "local"
+image_name = "crr0004/sagemaker-rl-tensorflow:{}".format(
+    "nvidia" if gpu_available else "console")
 
 estimator = RLEstimator(entry_point="training_worker.py",
                         source_dir='src',
@@ -105,25 +107,32 @@ estimator = RLEstimator(entry_point="training_worker.py",
                         train_instance_count=1,
                         output_path=s3_output_path,
                         base_job_name=job_name_prefix,
-                        image_name="crr0004/sagemaker-rl-tensorflow:nvidia",
+                        image_name=image_name,
                         train_max_run=job_duration_in_seconds, # Maximum runtime in seconds
                         hyperparameters={"s3_bucket": s3_bucket,
                                          "s3_prefix": s3_prefix,
                                          "aws_region": aws_region,
                                          "model_metadata_s3_key": "s3://{}/custom_files/model_metadata.json".format(s3_bucket),
                                          "RLCOACH_PRESET": RLCOACH_PRESET,
-                                         #"pretrained_s3_bucket": "{}".format(s3_bucket),
-                                         #"pretrained_s3_prefix": "rl-deepracer-pretrained"
+                                         "batch_size": 64,
+                                         "num_epochs": 7,
+                                         #"stack_size" : 1,
+                                         "lr" : 0.0003,
+                                         "exploration_type" : "categorical",
+                                         # "e_greedy_value" : 0.05,
+                                         # "epsilon_steps" : 10000,
+                                         "beta_entropy" : 0.01,
+                                         "discount_factor" : 0.995,
                                          "loss_type": "mean squared error",
-                                         # "batch_size": 64,
-                                         # "num_epochs": 10,
-                                         # "beta_entropy": 0.01,
-                                         # "lr": 0.0003,
-                                         # "num_episodes_between_training": 20,
-                                         # "discount_factor": 0.999
+                                         "num_episodes_between_training" : 40,
+                                         "term_cond_max_episodes" : 3000,
+                                         "term_cond_avg_score" : 100000,
+                                         "pretrained_s3_bucket": "{}".format(s3_bucket),
+                                         "pretrained_s3_prefix": "rl-deepracer-pretrained"
+                                         # "loss_type": "mean squared error",
                                       },
                         metric_definitions = metric_definitions,
-						s3_client=s3Client
+                        s3_client=s3Client
                         #subnets=default_subnets, # Required for VPC mode
                         #security_group_ids=default_security_groups, # Required for VPC mode
                     )
